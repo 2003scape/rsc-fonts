@@ -1,0 +1,31 @@
+{
+  "name": "rsc-fonts",
+  "version": "1.0.0",
+  "description": "(de)serialize runescape classic fonts",
+  "main": "./src/index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/2003scape/rsc-fonts.git"
+  },
+  "keywords": [
+    "runescape",
+    "rsc",
+    "glyph",
+    "bitmap",
+    "fonts",
+    "bdf"
+  ],
+  "author": "2003Scape Team",
+  "license": "AGPL-3.0+",
+  "bugs": {
+    "url": "https://github.com/2003scape/rsc-fonts/issues"
+  },
+  "homepage": "https://github.com/2003scape/rsc-fonts#readme",
+  "dependencies": {
+    "@2003scape/rsc-archiver": "^2.0.0"
+  }
+}
