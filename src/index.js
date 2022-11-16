@@ -22,12 +22,12 @@ const FONTS = [
     'h14b.jf',
     'h16b.jf',
     'h20b.jf',
-    'h24b.jf',
+    'h24b.jf'
 ];
 
 const CHARSET =
-    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz01234567' +
-    '89!"£$%^&*()-_=+[{]};:\'@#~,<.>/?\\| ';
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!"£$%^&*()' +
+    "-_=+[{]};:'@#~,<.>/?\\| ";
 
 const CHARACTER_WIDTH = new Int32Array(256);
 
@@ -50,7 +50,7 @@ class Font {
             throw new Error('font data not specified');
         }
 
-        this.fontData = fontData;
+        this.fontData = new Int8Array(fontData);
 
         const match = fontName.match(/.(\d{2})(\w{1})/);
 
@@ -68,40 +68,55 @@ class Font {
         const yOffset = this.fontData[characterOffset + 6];
 
         const width = this.fontData[characterOffset + 3];
-        const height = this.fontData[characterOffset + 4];
+        let height = this.fontData[characterOffset + 4];
 
         // position of pixel data for the font (on/off)
         let fontPosition =
-            this.fontData[characterOffset] * 16384 +
+            this.fontData[characterOffset] * (128 * 128) +
             this.fontData[characterOffset + 1] * 128 +
             this.fontData[characterOffset + 2];
 
         const bitmap = [];
+        let isEmpty = true;
+
+        const byteLength = Math.ceil(width / 8);
 
         for (let y = -height; y < 0; y++) {
             const row = [];
 
-            for (let x = -width; x < 0; x++) {
+            for (let i = 0; i < byteLength * 8; i++) {
+                row.push(0);
+            }
+
+            for (let x = -width, rowIndex = 0; x < 0; x++, rowIndex++) {
                 if (this.fontData[fontPosition] !== 0) {
-                    //dest[fontPosition] = 1;
                     //process.stdout.write('1');
-                    row.push(1);
+                    row[rowIndex] = 1;
+                    isEmpty = false;
                 } else {
-                    //process.stdout.write(' ');
-                    row.push(0);
+                    //process.stdout.write('-');
+                    //row.push(0);
+                    row[rowIndex] = 0;
                 }
 
                 fontPosition++;
             }
 
+            //process.stdout.write('\n');
+
             bitmap.push(row);
+        }
+
+        if (isEmpty) {
+            bitmap.length = 0;
+            height = 0;
         }
 
         return {
             name: `character_${charCode}`,
             code: charCode,
             char: character,
-            scalableWidthX: this.size * 72,
+            scalableWidthX: width * 72,
             scalableWidthY: 0,
             deviceWidthX: width,
             deviceWidthY: 0,
@@ -109,7 +124,7 @@ class Font {
                 width,
                 height,
                 x: xOffset,
-                y: -yOffset + 12
+                y: yOffset - height
             },
             bitmap
         };
@@ -138,8 +153,11 @@ class Font {
         bdf.meta = {
             version: '2.1',
             boundingBox: {
+                /*width: maxWidth,
+                height: maxHeight,*/
+                //width: 11,
                 width: maxWidth,
-                height: maxHeight,
+                height: this.size,
                 x: 0,
                 y: -2 // TODO experiment with this?
             },
