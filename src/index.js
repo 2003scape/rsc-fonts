@@ -79,53 +79,56 @@ class Font {
         const bitmap = [];
         let isEmpty = true;
 
-        const byteLength = Math.ceil(width / 8);
+        const bitLength = Math.ceil(width / 8) * 8;
 
-        for (let y = -height; y < 0; y++) {
+        for (let y = 0; y < height; y++) {
             const row = [];
 
-            for (let i = 0; i < byteLength * 8; i++) {
+            for (let i = 0; i < bitLength; i++) {
                 row.push(0);
             }
 
-            for (let x = -width, rowIndex = 0; x < 0; x++, rowIndex++) {
+            for (let x = 0; x < width; x++) {
                 if (this.fontData[fontPosition] !== 0) {
-                    //process.stdout.write('1');
-                    row[rowIndex] = 1;
+                    row[x] = 1;
                     isEmpty = false;
                 } else {
-                    //process.stdout.write('-');
-                    //row.push(0);
-                    row[rowIndex] = 0;
+                    row[x] = 0;
                 }
 
                 fontPosition++;
             }
 
-            //process.stdout.write('\n');
-
             bitmap.push(row);
         }
 
+        const boundingBox = {
+            width: 0,
+            height: 0,
+            x: 0,
+            y: 0
+        };
+
         if (isEmpty) {
             bitmap.length = 0;
-            height = 0;
+        } else {
+            boundingBox.width =  width;
+            boundingBox.height = height;
+            boundingBox.x =  xOffset;
+            boundingBox.y =  yOffset - height;
         }
+
+        const displayWidth = this.fontData[characterOffset + 7];
 
         return {
             name: `character_${charCode}`,
             code: charCode,
             char: character,
-            scalableWidthX: width * 72,
+            scalableWidthX: (displayWidth + xOffset + 1) * 75,
             scalableWidthY: 0,
-            deviceWidthX: width,
+            deviceWidthX: displayWidth,
             deviceWidthY: 0,
-            boundingBox: {
-                width,
-                height,
-                x: xOffset,
-                y: yOffset - height
-            },
+            boundingBox,
             bitmap
         };
     }
@@ -135,6 +138,7 @@ class Font {
 
         let maxWidth = 0;
         let maxHeight = 0;
+        let minY = 0;
 
         for (const character of CHARSET) {
             const glyph = this.getGlyph(character);
@@ -148,18 +152,19 @@ class Font {
             if (glyph.boundingBox.height > maxHeight) {
                 maxHeight = glyph.boundingBox.height;
             }
+
+            if (glyph.boundingBox.y < minY) {
+                minY = glyph.boundingBox.y;
+            }
         }
 
         bdf.meta = {
             version: '2.1',
             boundingBox: {
-                /*width: maxWidth,
-                height: maxHeight,*/
-                //width: 11,
                 width: maxWidth,
-                height: this.size,
+                height: maxHeight,
                 x: 0,
-                y: -2 // TODO experiment with this?
+                y: minY
             },
             name: `${this.name}`,
             size: {
@@ -168,7 +173,8 @@ class Font {
                 resolutionY: 75
             },
             properties: {
-                weightName: this.style
+                weightName: this.style,
+                fontDescent: -minY,
             }
         };
 
@@ -202,4 +208,4 @@ class Fonts {
 Fonts.FONTS = FONTS;
 Fonts.CHARSET = CHARSET;
 
-export default Fonts;
+export { Font, Fonts };
