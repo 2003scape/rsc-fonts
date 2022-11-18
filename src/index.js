@@ -2,18 +2,6 @@ import BDF from '@misterhat/bdf';
 import { JagArchive } from '@2003scape/rsc-archiver';
 
 // default fonts
-// TODO parse this instead of storing all the meta
-/*const FONTS = [
-    { file: 'h11p.jf', name: 'Helvetica', size: 11 },
-    { file: 'h12b.jf', name: 'Helvetica', size: 12, style: 'Bold' },
-    { file: 'h12p.jf', name: 'Helvetica', size: 12 },
-    { file: 'h13b.jf', name: 'Helvetica', size: 13 },
-    { file: 'h14b.jf', name: 'Helvetica', size: 14 },
-    { file: 'h16b.jf', name: 'Helvetica', size: 16, style: 'Bold' },
-    { file: 'h20b.jf', name: 'Helvetica', size: 20, style: 'Bold' },
-    { file: 'h24b.jf', name: 'Helvetica', size: 24, style: 'Bold' }
-];*/
-
 const FONTS = [
     'h11p.jf',
     'h12b.jf',
@@ -44,6 +32,16 @@ for (let i = 0; i < 256; i++) {
     CHARACTER_WIDTH[i] = index * 9;
 }
 
+function writePosition(buffer, bufferPosition, position) {
+    buffer[bufferPosition] = Math.floor(position / (128 * 128));
+    position -= buffer[bufferPosition] * 128;
+
+    buffer[bufferPosition + 1] = Math.floor(position / 128);
+    position -= buffer[bufferPosition + 1] * 128;
+
+    buffer[bufferPosition + 2] = position;
+}
+
 class Font {
     constructor(fontName, fontData) {
         if (!fontData || !fontData.length) {
@@ -54,9 +52,86 @@ class Font {
 
         const match = fontName.match(/.(\d{2})(\w{1})/);
 
-        this.name = fontName.split('.')[0];
-        this.size = Number(match[1]);
-        this.style = match[2] === 'b' ? 'Bold' : 'Normal';
+        if (match && match.length) {
+            this.name = fontName.split('.')[0];
+            this.size = Number(match[1]);
+            this.style = match[2] === 'b' ? 'Bold' : 'Normal';
+        }
+    }
+
+    static fromBDF(bdf) {
+        const glyphBuffers = [];
+        const glyphOffsets = [];
+        let glyphOffset = 0;
+
+        for (let i = 0; i < CHARSET.length; i++) {
+            const charCode = CHARSET.charCodeAt(i);
+            const glyph = bdf.glyphs[charCode];
+
+            if (!glyph) {
+                throw new Error(
+                    `missing glyph "${CHARSET[i]}" (code ${charCode})`
+                );
+            }
+
+            const { width, height } = glyph.boundingBox;
+
+            const glyphData = new Uint8Array(width * height);
+
+            let fontPosition = 0;
+
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    glyphData[fontPosition++] = glyph.bitmap[y][x];
+                }
+            }
+
+            glyphBuffers.push(glyphData);
+            glyphOffsets.push(855 + glyphOffset);
+
+            glyphOffset += width * height;
+        }
+
+        const header = new Uint8Array(855);
+        const fontData = new Uint8Array(header.length + glyphOffset);
+
+        for (let i = 0; i < CHARSET.length; i++) {
+            const charCode = CHARSET.charCodeAt(i);
+            const glyph = bdf.glyphs[charCode];
+            const characterOffset = CHARACTER_WIDTH[charCode];
+
+            writePosition(header, characterOffset, glyphOffsets[i]);
+
+            const {
+                deviceWidthX,
+                boundingBox: { width, height, x, y }
+            } = glyph;
+
+            header[characterOffset + 3] = width;
+            header[characterOffset + 4] = height;
+
+            header[characterOffset + 5] = x;
+            header[characterOffset + 6] = y + height;
+
+            // TODO maybe option for additional kerning here
+            header[characterOffset + 7] = deviceWidthX;
+
+            fontData.set(glyphBuffers[i], glyphOffsets[i]);
+        }
+
+        fontData.set(header);
+
+        const name = bdf.meta.name || 'h';
+        const style = /bold/i.test(bdf.meta.properties.weightName) ? 'b' : 'p';
+
+        return new Font(`${name[0]}${bdf.meta.size.points}${style}`, fontData);
+    }
+
+    getJF() {
+        const name = this.name || 'h';
+        const style = /bold/i.test(this.style) ? 'b' : 'p';
+
+        return `${name[0]}${this.size}${style}.jf`;
     }
 
     getGlyph(character) {
@@ -112,10 +187,10 @@ class Font {
         if (isEmpty) {
             bitmap.length = 0;
         } else {
-            boundingBox.width =  width;
+            boundingBox.width = width;
             boundingBox.height = height;
-            boundingBox.x =  xOffset;
-            boundingBox.y =  yOffset - height;
+            boundingBox.x = xOffset;
+            boundingBox.y = yOffset - height;
         }
 
         const displayWidth = this.fontData[characterOffset + 7];
@@ -124,7 +199,8 @@ class Font {
             name: `character_${charCode}`,
             code: charCode,
             char: character,
-            scalableWidthX: (displayWidth + xOffset + 1) * 75,
+            // TODO this still is off for some characters after ttf conversion
+            scalableWidthX: (displayWidth + 1) * 75,
             scalableWidthY: 0,
             deviceWidthX: displayWidth,
             deviceWidthY: 0,
@@ -162,7 +238,7 @@ class Font {
             version: '2.1',
             boundingBox: {
                 width: maxWidth,
-                height: maxHeight,
+                height: maxHeight + -minY,
                 x: 0,
                 y: minY
             },
@@ -174,7 +250,7 @@ class Font {
             },
             properties: {
                 weightName: this.style,
-                fontDescent: -minY,
+                fontDescent: -minY
             }
         };
 
@@ -201,7 +277,11 @@ class Fonts {
     }
 
     toArchive() {
-        return this.archive.toArchive(true);
+        for (const font of this.fonts) {
+            this.archive.putEntry(font.getJF(), font.fontData);
+        }
+
+        return this.archive.toArchive(false);
     }
 }
 
